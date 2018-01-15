@@ -6,7 +6,7 @@ const ead = {
   SYM_IMPL: Symbol("ead.SYM_IMPL"),
   SYM_DEF:  Symbol("ead.SYM_DEF"),
 
-  execute: (tasks, request) => {
+  execute: (tasks, request, onEvent = null) => {
     throw new Error("TODO");
   },
 
@@ -69,11 +69,68 @@ const ead = {
 
     {}
   ),
+
+  defaultValue: function* (request, defaultValue) {
+    try {
+      const result = yield request;
+      if (typeof(result) !== "undefined") {
+        return result;
+      } else {
+        return defaultValue;
+      }
+    } catch (_error) {
+      return defaultValue;
+    }
+  },
+
+  tasks: ead.createTasks({
+    Date: {
+      now: () => ({ response: Date.now() }),
+    },
+
+    Math: {
+      random: () => ({ response: Math.random() }),
+    },
+
+    clearTimeout: (id) => ({ response: clearTimeout(id) }),
+    setTimeout: (fn, ms) => ({ response: setTimeout(fn, ms) }),
+  }),
 };
 
 const tasks = ead.createTasks({
-  httpGet: (url) => fetch(url)
-    .then(res  => res.json())
-    .then(json => ({ response: json }))
-  ,
+  http: {
+    get: (url) => fetch(url)
+      .then(res  => res.json())
+      .then(json => ({ response: json }))
+    ,
+  },
 });
+
+const getPerson = function* (id) {
+  const person = yield tasks.http.get(`https://swapi.co/api/people/${ id }`);
+  return person.name;
+};
+
+const getPeopleWithSameName = function* (id) {
+  const person = yield tasks.http.get(`https://swapi.co/api/people/${ id }`);
+  const sameNames = yield tasks.db.query({
+    text: `
+      SELECT *
+      FROM users
+      WHERE name = $1
+    `,
+    values: [person.name],
+  });
+
+  const randomNumber = yield ead.tasks.math.random();
+
+  return sameNames;
+};
+
+ead.execute(tasks, getPerson)
+.then(names => {
+  console.log("\n");
+  console.log("Function Results:");
+  console.log(names.join(", "));
+})
+.catch(console.error);
